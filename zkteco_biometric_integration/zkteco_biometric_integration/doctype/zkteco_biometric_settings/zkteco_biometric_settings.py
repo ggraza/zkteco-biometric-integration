@@ -2,6 +2,7 @@
 # For license information, please see license.txt
 
 from datetime import timedelta
+from frappe import _
 
 from frappe.model.document import Document
 from frappe.utils import get_datetime
