@@ -1,12 +1,8 @@
 # Copyright (c) 2025, Navari Limited and contributors
 # For license information, please see license.txt
 
-import time
 from datetime import timedelta
 
-import frappe
-import jwt
-import requests
 from frappe.model.document import Document
 from frappe.utils import get_datetime
 

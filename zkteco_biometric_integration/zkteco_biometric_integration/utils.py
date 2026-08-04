@@ -44,6 +44,13 @@ def make_http_request(
 		)
 		frappe.throw(f"HTTP Request to {url} timed out after {timeout} seconds")
 
+	except requests.exceptions.ConnectionError:
+		frappe.log_error(
+			message=frappe.get_traceback(),
+			title="ZKTeco Biometric Integration: Connection Error",
+		)
+		frappe.throw(f"HTTP Request to {url} failed to connect")
+
 	except requests.exceptions.RequestException as e:
 		frappe.log_error(message=frappe.get_traceback(), title="ZKTeco Biometric Integration")
 		frappe.throw(f"HTTP Request failed: {e}")
