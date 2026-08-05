@@ -14,16 +14,16 @@ from zkteco_biometric_integration.zkteco_biometric_integration.api.test_utils im
 	create_user,
 	link_employee_with_user,
 )
-from zkteco_biometric_integration.zkteco_biometric_integration.api.transactions_sync_service import (
-	build_transaction_data,
-	create_employee_checkin,
-	manage_user,
-)
 from zkteco_biometric_integration.zkteco_biometric_integration.api.zkteco_api import (
 	get_transactions,
 )
 from zkteco_biometric_integration.zkteco_biometric_integration.doctype.zkteco_biometric_settings.zkteco_biometric_settings import (
 	ZKTecoBiometricSettings,
+)
+from zkteco_biometric_integration.zkteco_biometric_integration.services.transactions_sync_service import (
+	build_transaction_data,
+	create_employee_checkin,
+	manage_user,
 )
 
 

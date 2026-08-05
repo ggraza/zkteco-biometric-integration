@@ -12,6 +12,11 @@ from .api_connector import APIConnector
 
 TOKEN_ENDPOINT = "/jwt-api-token-auth/"
 TRANSACTIONS_ENDPOINT = "/iclock/api/transactions/"
+EMPLOYEE_CREATION_ENDPOINT = "/personnel/api/employees/"
+
+
+def auth_headers(settings: "ZKTecoBiometricSettings") -> dict:
+	return {"Authorization": f"JWT {settings.generate_token()}"}
 
 
 def get_token(settings: "ZKTecoBiometricSettings") -> str:
@@ -43,7 +48,6 @@ def get_token(settings: "ZKTecoBiometricSettings") -> str:
 
 def get_transactions(
 	settings: "ZKTecoBiometricSettings",
-	headers: dict,
 	params: dict,
 	end_time: str,
 ) -> Iterable[dict]:
@@ -55,7 +59,7 @@ def get_transactions(
 		connector = (
 			APIConnector(settings_doc=settings)
 			.set_http_method("GET")
-			.set_headers(headers)
+			.set_headers(auth_headers(settings))
 			.set_base_url(settings.url)
 		)
 
@@ -82,3 +86,15 @@ def get_transactions(
 
 	if has_transactions:
 		settings.db_set("last_fetched_time", end_time, update_modified=False)
+
+
+def create_employee(settings: "ZKTecoBiometricSettings", employee_payload: dict) -> dict:
+	return (
+		APIConnector(settings_doc=settings)
+		.set_http_method("POST")
+		.set_headers(auth_headers(settings))
+		.set_base_url(settings.url)
+		.set_endpoint(EMPLOYEE_CREATION_ENDPOINT)
+		.set_payload(employee_payload)
+		.make_remote_call()
+	)

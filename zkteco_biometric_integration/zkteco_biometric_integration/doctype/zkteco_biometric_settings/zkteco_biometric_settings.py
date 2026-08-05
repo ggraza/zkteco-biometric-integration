@@ -2,8 +2,15 @@
 # For license information, please see license.txt
 
 import frappe
+from frappe import _
 from frappe.model.document import Document
 from frappe.utils import get_datetime
+
+SYNC_INLINE_LIMIT = 20
+PER_EMPLOYEE_TIMEOUT_SECONDS = 30
+SYNC_EMPLOYEES_METHOD = (
+	"zkteco_biometric_integration.zkteco_biometric_integration.services.employee_service.sync_employees"
+)
 
 
 class ZKTecoBiometricSettings(Document):
@@ -44,3 +51,25 @@ class ZKTecoBiometricSettings(Document):
 			return True
 
 		return get_datetime() >= get_datetime(self.expiry)
+
+	@frappe.whitelist()
+	def sync_employees(self, employees: str | list | None = None, filters: str | dict | None = None) -> dict:
+		frappe.only_for(["System Manager", "HR Manager"])
+
+		from ...services.employee_service import resolve_employees
+		from ...services.employee_service import sync_employees as run_sync
+
+		employee_ids = resolve_employees(employees, filters)
+
+		if not employee_ids:
+			frappe.throw(_("No employees matched the given selection"))
+
+		frappe.enqueue(
+			SYNC_EMPLOYEES_METHOD,
+			queue="long",
+			timeout=len(employee_ids) * PER_EMPLOYEE_TIMEOUT_SECONDS,
+			settings_name=self.name,
+			employees=employee_ids,
+		)
+
+		return {"queued": True, "total": len(employee_ids)}
