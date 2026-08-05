@@ -11,7 +11,7 @@ from zkteco_biometric_integration.zkteco_biometric_integration.utils import (
 	map_checkin,
 )
 
-from .zkteco_api import get_transactions
+from ..api.zkteco_api import get_transactions
 
 TXNs_PAGE_SIZE = 30
 
@@ -24,9 +24,9 @@ def process_transactions() -> None:
 	for setting in biometric_settings:
 		settings_doc: ZKTecoBiometricSettings = frappe.get_doc("ZKTeco Biometric Settings", setting)
 
-		settings, headers, params, end_time = build_transaction_data(settings_doc)
+		settings, params, end_time = build_transaction_data(settings_doc)
 		try:
-			for txn in get_transactions(settings, headers, params, end_time):
+			for txn in get_transactions(settings, params, end_time):
 				if emp_checkin := create_employee_checkin(txn):
 					(manage_user(emp_checkin) if settings_doc.enable_mandatory_checkin else None)
 
@@ -42,9 +42,6 @@ def process_transactions() -> None:
 
 
 def build_transaction_data(settings: "ZKTecoBiometricSettings") -> tuple:
-	token = settings.generate_token()
-
-	headers = {"Authorization": f"JWT {token}"}
 	start_time = settings.last_fetched_time if settings.last_fetched_time else get_datetime()
 	end_time = get_datetime()
 	params = {
@@ -55,7 +52,6 @@ def build_transaction_data(settings: "ZKTecoBiometricSettings") -> tuple:
 
 	return (
 		settings,
-		headers,
 		params,
 		end_time,
 	)

@@ -1,1 +1,1 @@
-SCHEDULED_JOB_METHOD = "zkteco_biometric_integration.zkteco_biometric_integration.api.transactions_sync_service.process_transactions"
+SCHEDULED_JOB_METHOD = "zkteco_biometric_integration.zkteco_biometric_integration.services.transactions_sync_service.process_transactions"
