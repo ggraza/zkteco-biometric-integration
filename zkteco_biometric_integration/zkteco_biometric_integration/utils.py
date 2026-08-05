@@ -1,75 +1,7 @@
-from collections.abc import Callable
 from datetime import date, datetime, time
-from typing import Literal
 
 import frappe
-import requests
-from frappe.model.document import Document
-
-methodMap: dict[str, Callable[..., requests.Response]] = {
-	"GET": requests.get,
-	"POST": requests.post,
-}
-
-REQUEST_TIMEOUT_SECONDS = 10
-
-
-def http_type_method(method: str) -> Callable[..., requests.Response]:
-	if method not in methodMap:
-		frappe.throw(f"HTTP Method {method} not supported")
-
-	return methodMap[method]
-
-
-def make_http_request(
-	method: str,
-	url: str,
-	headers: dict[str, str],
-	payload: dict | None = None,
-	params: dict | None = None,
-	timeout: int = REQUEST_TIMEOUT_SECONDS,
-) -> dict | None:
-	http_method = http_type_method(method)
-
-	try:
-		response = http_method(url, headers=headers, json=payload, params=params, timeout=timeout)
-
-		response.raise_for_status()
-		return response.json()
-
-	except requests.exceptions.Timeout:
-		frappe.log_error(
-			message=frappe.get_traceback(),
-			title="ZKTeco Biometric Integration: Request Timeout",
-		)
-		frappe.throw(f"HTTP Request to {url} timed out after {timeout} seconds")
-
-	except requests.exceptions.ConnectionError:
-		frappe.log_error(
-			message=frappe.get_traceback(),
-			title="ZKTeco Biometric Integration: Connection Error",
-		)
-		frappe.throw(f"HTTP Request to {url} failed to connect")
-
-	except requests.exceptions.RequestException as e:
-		frappe.log_error(message=frappe.get_traceback(), title="ZKTeco Biometric Integration")
-		frappe.throw(f"HTTP Request failed: {e}")
-
-
-def update_integration_request_log(
-	integration_request_log: Document,
-	status: Literal["Completed", "Failed"],
-	response: dict | None = None,
-	error: str | None = None,
-) -> None:
-	if not integration_request_log:
-		return
-
-	integration_request_log.status = str(status)
-	integration_request_log.output = str(response)
-	integration_request_log.error = str(error)
-
-	integration_request_log.save(ignore_permissions=True)
+from frappe import _
 
 
 def map_checkin(punch_state: str) -> str:
@@ -92,13 +24,6 @@ def get_employees() -> list[dict]:
 	)
 
 
-def get_day_time_range() -> list[datetime]:
-	today = date.today()
-	start_of_day = datetime.combine(today, time())
-	end_of_day = datetime.combine(today, time(23, 59, 59))
-	return [start_of_day, end_of_day]
-
-
 def does_checkin_exist(transaction: dict) -> bool:
 	return frappe.db.exists(
 		"Employee Checkin",
@@ -118,3 +43,8 @@ def does_employee_exist(emp_code: str) -> bool:
 			"status": "Active",
 		},
 	)
+
+
+def log_throw_error(title: str) -> None:
+	frappe.log_error(title=title, message=frappe.get_traceback())
+	frappe.throw(_(title))
