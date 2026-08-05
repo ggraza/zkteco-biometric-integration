@@ -67,6 +67,7 @@ class ZKTecoBiometricSettings(Document):
 		frappe.enqueue(
 			SYNC_EMPLOYEES_METHOD,
 			queue="long",
+			enqueue_after_commit=True,
 			timeout=len(employee_ids) * PER_EMPLOYEE_TIMEOUT_SECONDS,
 			settings_name=self.name,
 			employees=employee_ids,
