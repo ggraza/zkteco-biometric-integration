@@ -1,14 +1,9 @@
 # Copyright (c) 2025, Navari Limited and contributors
 # For license information, please see license.txt
 
-from datetime import timedelta
-
+import frappe
 from frappe.model.document import Document
 from frappe.utils import get_datetime
-
-from zkteco_biometric_integration.zkteco_biometric_integration.utils import (
-	make_http_request,
-)
 
 
 class ZKTecoBiometricSettings(Document):
@@ -25,7 +20,7 @@ class ZKTecoBiometricSettings(Document):
 		is_fetch_enabled: DF.Check
 		issued_at: DF.Datetime | None
 		last_fetched_time: DF.Datetime | None
-		password: DF.Data
+		password: DF.Password
 		token: DF.Text | None
 		url: DF.Data
 		username: DF.Data
@@ -35,22 +30,17 @@ class ZKTecoBiometricSettings(Document):
 		self.db_set("last_fetched_time", get_datetime())
 
 	def validate(self):
-		self.generate_token()
+		self.url = self.url.strip("/")
 
-	def generate_token(self) -> None:
-		headers = {"Content-Type": "application/json"}
+	@frappe.whitelist()
+	def generate_token(self) -> str:
+		from ...api.zkteco_api import get_token
 
-		endpoint_url = f"{self.url}/jwt-api-token-auth/"
-		payload = {"username": self.username, "password": self.password}
+		return get_token(self) if self.is_token_expired else self.token
 
-		response = make_http_request(method="POST", url=endpoint_url, headers=headers, payload=payload)
-		if response and response.get("token"):
-			self.token = response["token"]
-			self.issued_at = get_datetime()
-			self.expiry = self.issued_at + timedelta(days=1)
-
+	@property
 	def is_token_expired(self) -> bool:
 		if not self.token or not self.expiry:
-			return False
+			return True
 
-		return get_datetime() >= self.expiry
+		return get_datetime() >= get_datetime(self.expiry)

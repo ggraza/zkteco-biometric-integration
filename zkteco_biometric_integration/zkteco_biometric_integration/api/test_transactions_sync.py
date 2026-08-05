@@ -1,8 +1,11 @@
 import unittest
-from unittest.mock import patch
+from unittest.mock import PropertyMock, patch
 
 import frappe
 
+from zkteco_biometric_integration.zkteco_biometric_integration.api.api_connector import (
+	APIConnector,
+)
 from zkteco_biometric_integration.zkteco_biometric_integration.api.test_utils import (
 	cleanup_employee,
 	cleanup_user,
@@ -11,25 +14,28 @@ from zkteco_biometric_integration.zkteco_biometric_integration.api.test_utils im
 	create_user,
 	link_employee_with_user,
 )
-from zkteco_biometric_integration.zkteco_biometric_integration.api.transactions_sync import (
+from zkteco_biometric_integration.zkteco_biometric_integration.api.transactions_sync_service import (
+	build_transaction_data,
 	create_employee_checkin,
-	get_transactions,
 	manage_user,
+)
+from zkteco_biometric_integration.zkteco_biometric_integration.api.zkteco_api import (
+	get_transactions,
+)
+from zkteco_biometric_integration.zkteco_biometric_integration.doctype.zkteco_biometric_settings.zkteco_biometric_settings import (
+	ZKTecoBiometricSettings,
 )
 
 
 class TestTransactionsSync(unittest.TestCase):
-	@patch("zkteco_biometric_integration.zkteco_biometric_integration.utils.make_http_request")
 	@patch(
 		"zkteco_biometric_integration.zkteco_biometric_integration.doctype."
 		"zkteco_biometric_settings.zkteco_biometric_settings."
 		"ZKTecoBiometricSettings.generate_token"
 	)
-	def setUp(self, mock_generate_token, mock_make_http_request):
+	def setUp(self, mock_generate_token):
 		frappe.set_user("Administrator")
 		mock_generate_token.return_value = None
-
-		mock_make_http_request.return_value = {"token": "test_token_123"}
 
 		self.settings = create_settings()
 
@@ -42,35 +48,34 @@ class TestTransactionsSync(unittest.TestCase):
 		cleanup_employee()
 		cleanup_user()
 
-	@patch(
-		"zkteco_biometric_integration.zkteco_biometric_integration.api.transactions_sync.make_http_request"
-	)
-	@patch(
-		"zkteco_biometric_integration.zkteco_biometric_integration.doctype.zkteco_biometric_settings.zkteco_biometric_settings.ZKTecoBiometricSettings.is_token_expired"
-	)
-	def test_get_transactions(self, mock_is_token_expired, mock_make_http_request):
+	@patch.object(APIConnector, "make_remote_call", autospec=True)
+	@patch.object(ZKTecoBiometricSettings, "is_token_expired", new_callable=PropertyMock)
+	def test_get_transactions(self, mock_is_token_expired, mock_make_remote_call):
 		mock_is_token_expired.return_value = False
 		self.settings.token = "test_token_123"
 
-		mock_make_http_request.return_value = {
+		mock_make_remote_call.return_value = {
 			"data": [
 				{"id": 1, "emp_code": "EMP001", "punch_time": "2024-01-01 09:00:00"},
 				{"id": 2, "emp_code": "EMP002", "punch_time": "2024-01-01 09:15:00"},
 			],
 			"next": None,
 		}
-		transactions = list(get_transactions(self.settings))
+		transactions = list(get_transactions(*build_transaction_data(self.settings)))
 
 		self.assertEqual(len(transactions), 2)
-		mock_make_http_request.assert_called_with(
-			method="GET",
-			url=f"{self.settings.url}/iclock/api/transactions/",
-			headers={
+
+		# autospec records the connector as the first positional arg
+		connector = mock_make_remote_call.call_args.args[0]
+		self.assertEqual(connector.absolute_url, f"{self.settings.url}/iclock/api/transactions/")
+		self.assertEqual(
+			connector._headers,
+			{
 				"Content-Type": "application/json",
 				"Authorization": f"JWT {self.settings.token}",
 			},
-			params=unittest.mock.ANY,
 		)
+		self.assertIsNotNone(connector._params)
 
 	def test_create_employee_checkin_for_non_existent_employee(self):
 		# Test to ensure we do not create employee checkins for non-existent employees
@@ -132,13 +137,9 @@ class TestTransactionsSync(unittest.TestCase):
 
 		self.assertEqual(status, 1)
 
-	@patch(
-		"zkteco_biometric_integration.zkteco_biometric_integration.api.transactions_sync.make_http_request"
-	)
-	@patch(
-		"zkteco_biometric_integration.zkteco_biometric_integration.doctype.zkteco_biometric_settings.zkteco_biometric_settings.ZKTecoBiometricSettings.is_token_expired"
-	)
-	def test_sync_creates_checkins_from_zkteco_payload(self, mock_is_token_expired, mock_make_http_request):
+	@patch.object(APIConnector, "make_remote_call", autospec=True)
+	@patch.object(ZKTecoBiometricSettings, "is_token_expired", new_callable=PropertyMock)
+	def test_sync_creates_checkins_from_zkteco_payload(self, mock_is_token_expired, mock_make_remote_call):
 		"""End-to-end: a realistic paginated ZKTeco /iclock/api/transactions/
 		payload results in Employee Checkin documents."""
 		mock_is_token_expired.return_value = False
@@ -149,7 +150,7 @@ class TestTransactionsSync(unittest.TestCase):
 		# Mirrors the real BioTime transaction interface, across two pages
 		# to exercise the pagination loop.
 		page_2_url = f"{self.settings.url}/iclock/api/transactions/?page=2"
-		mock_make_http_request.side_effect = [
+		mock_make_remote_call.side_effect = [
 			{
 				"count": 2,
 				"next": page_2_url,
@@ -192,7 +193,7 @@ class TestTransactionsSync(unittest.TestCase):
 			},
 		]
 
-		transactions = list(get_transactions(self.settings))
+		transactions = list(get_transactions(*build_transaction_data(self.settings)))
 		self.assertEqual(len(transactions), 2)
 
 		checkins = [create_employee_checkin(txn) for txn in transactions]
@@ -213,10 +214,10 @@ class TestTransactionsSync(unittest.TestCase):
 		self.assertEqual(out_punch, "OUT")
 
 		# Pagination was followed: first call with params, second to the next URL
-		self.assertEqual(mock_make_http_request.call_count, 2)
-		second_call_kwargs = mock_make_http_request.call_args_list[1].kwargs
-		self.assertEqual(second_call_kwargs["url"], page_2_url)
-		self.assertIsNone(second_call_kwargs["params"])
+		self.assertEqual(mock_make_remote_call.call_count, 2)
+		second_connector = mock_make_remote_call.call_args_list[1].args[0]
+		self.assertEqual(second_connector.absolute_url, page_2_url)
+		self.assertIsNone(second_connector._params)
 
 		# Idempotency: re-running the same payload creates no duplicates
 		duplicate = create_employee_checkin(transactions[0])
