@@ -149,9 +149,11 @@ app_license = "mit"
 # ---------------
 
 scheduler_events = {
-	"all": [
-		"zkteco_biometric_integration.zkteco_biometric_integration.api.transactions_sync.handle_employee_checkin"
-	],
+	"cron": {
+		"0 6,18 * * *": [
+			"zkteco_biometric_integration.zkteco_biometric_integration.services.transactions_sync_service.process_transactions"
+		],
+	}
 }
 
 # Testing

@@ -1,13 +1,15 @@
 # Copyright (c) 2025, Navari Limited and contributors
 # For license information, please see license.txt
 
-from datetime import timedelta
-
+import frappe
+from frappe import _
 from frappe.model.document import Document
 from frappe.utils import get_datetime
 
-from zkteco_biometric_integration.zkteco_biometric_integration.utils import (
-	make_http_request,
+SYNC_INLINE_LIMIT = 20
+PER_EMPLOYEE_TIMEOUT_SECONDS = 30
+SYNC_EMPLOYEES_METHOD = (
+	"zkteco_biometric_integration.zkteco_biometric_integration.services.employee_service.sync_employees"
 )
 
 
@@ -25,7 +27,7 @@ class ZKTecoBiometricSettings(Document):
 		is_fetch_enabled: DF.Check
 		issued_at: DF.Datetime | None
 		last_fetched_time: DF.Datetime | None
-		password: DF.Data
+		password: DF.Password
 		token: DF.Text | None
 		url: DF.Data
 		username: DF.Data
@@ -35,22 +37,40 @@ class ZKTecoBiometricSettings(Document):
 		self.db_set("last_fetched_time", get_datetime())
 
 	def validate(self):
-		self.generate_token()
+		self.url = self.url.strip("/")
 
-	def generate_token(self) -> None:
-		headers = {"Content-Type": "application/json"}
+	@frappe.whitelist()
+	def generate_token(self) -> str:
+		from ...api.zkteco_api import get_token
 
-		endpoint_url = f"{self.url}/jwt-api-token-auth/"
-		payload = {"username": self.username, "password": self.password}
+		return get_token(self) if self.is_token_expired else self.token
 
-		response = make_http_request(method="POST", url=endpoint_url, headers=headers, payload=payload)
-		if response and response.get("token"):
-			self.token = response["token"]
-			self.issued_at = get_datetime()
-			self.expiry = self.issued_at + timedelta(days=1)
-
+	@property
 	def is_token_expired(self) -> bool:
 		if not self.token or not self.expiry:
-			return False
+			return True
 
-		return get_datetime() >= self.expiry
+		return get_datetime() >= get_datetime(self.expiry)
+
+	@frappe.whitelist()
+	def sync_employees(self, employees: str | list | None = None, filters: str | dict | None = None) -> dict:
+		frappe.only_for(["System Manager", "HR Manager"])
+
+		from ...services.employee_service import resolve_employees
+		from ...services.employee_service import sync_employees as run_sync
+
+		employee_ids = resolve_employees(employees, filters)
+
+		if not employee_ids:
+			frappe.throw(_("No employees matched the given selection"))
+
+		frappe.enqueue(
+			SYNC_EMPLOYEES_METHOD,
+			queue="long",
+			enqueue_after_commit=True,
+			timeout=len(employee_ids) * PER_EMPLOYEE_TIMEOUT_SECONDS,
+			settings_name=self.name,
+			employees=employee_ids,
+		)
+
+		return {"queued": True, "total": len(employee_ids)}
