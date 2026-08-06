@@ -41,6 +41,8 @@ class ZKTecoBiometricSettings(Document):
 
 	@frappe.whitelist()
 	def generate_token(self) -> str:
+		frappe.only_for(["System Manager", "HR Manager"])
+
 		from ...api.zkteco_api import get_token
 
 		return get_token(self) if self.is_token_expired else self.token
