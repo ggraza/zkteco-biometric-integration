@@ -9,6 +9,7 @@ frappe.ui.form.on("ZKTeco Biometric Settings", {
 });
 
 function getToken(frm) {
+	if (frm.is_new()) return;
 	frm.add_custom_button(__("Get Token"), () => fetchToken(frm));
 }
 
@@ -37,6 +38,7 @@ const SEARCH_EMPLOYEES_METHOD =
 const FILTER_FIELDS = ["company", "department", "designation", "branch", "role", "status"];
 
 function syncEmployees(frm) {
+	if (frm.is_new()) return;
 	frm.add_custom_button(__("Sync Employees"), () => showSyncDialog(frm));
 }
 
