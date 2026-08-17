@@ -1,3 +1,5 @@
+from datetime import datetime, timedelta
+
 import frappe
 from frappe.model.document import Document
 from frappe.utils import get_datetime
@@ -15,23 +17,36 @@ from ..api.zkteco_api import get_transactions
 
 TXNs_PAGE_SIZE = 30
 
+SYNC_SAFETY_BUFFER_MINUTES = 60
 
-def process_transactions() -> None:
-	biometric_settings = frappe.get_all(
-		"ZKTeco Biometric Settings", filters={"is_fetch_enabled": 1}, pluck="name"
+
+def process_transactions(settings_name: str | None = None) -> None:
+	is_full_run = settings_name is None
+
+	biometric_settings = (
+		[settings_name]
+		if settings_name
+		else frappe.get_all("ZKTeco Biometric Settings", filters={"is_fetch_enabled": 1}, pluck="name")
 	)
+
+	run_started_at = get_datetime()
+	all_sources_succeeded = bool(biometric_settings)
+	all_sources_reported = bool(biometric_settings)
 
 	for setting in biometric_settings:
 		settings_doc: ZKTecoBiometricSettings = frappe.get_doc("ZKTeco Biometric Settings", setting)
+		received = 0
 
 		settings, params, end_time = build_transaction_data(settings_doc)
 		try:
 			for txn in get_transactions(settings, params, end_time):
+				received += 1
 				if emp_checkin := create_employee_checkin(txn):
 					(manage_user(emp_checkin) if settings_doc.enable_mandatory_checkin else None)
 
 			frappe.db.commit()
 		except Exception:
+			all_sources_succeeded = False
 			frappe.db.rollback()
 			frappe.log_error(
 				title="Employee Checkin Sync Error",
@@ -39,6 +54,34 @@ def process_transactions() -> None:
 				reference_doctype="ZKTeco Biometric Settings",
 				reference_name=settings_doc.name,
 			)
+
+		if not received:
+			all_sources_reported = False
+
+	if is_full_run and all_sources_succeeded and all_sources_reported:
+		advance_attendance_watermark(run_started_at)
+
+
+def advance_attendance_watermark(fetched_upto: datetime) -> None:
+	"""Tell HRMS how far it may safely process auto attendance.
+	Only shifts that have opted out of `auto_update_last_sync` are managed here,
+	so this never fights HRMS' own clock-based updater.
+	"""
+	watermark = fetched_upto - timedelta(minutes=SYNC_SAFETY_BUFFER_MINUTES)
+
+	shifts = frappe.get_all(
+		"Shift Type",
+		filters={"enable_auto_attendance": 1, "auto_update_last_sync": 0},
+		fields=["name", "last_sync_of_checkin"],
+	)
+
+	for shift in shifts:
+		if shift.last_sync_of_checkin and get_datetime(shift.last_sync_of_checkin) >= watermark:
+			continue
+
+		frappe.db.set_value("Shift Type", shift.name, "last_sync_of_checkin", watermark)
+
+	frappe.db.commit()
 
 
 def build_transaction_data(settings: "ZKTecoBiometricSettings") -> tuple:
