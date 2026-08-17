@@ -149,6 +149,10 @@ class TestProcessTransactionsGating(WatermarkTestCase):
 		):
 			self.settings = create_settings()
 
+		# a full run only looks at enabled sources; without this the fixture is
+		# invisible to it and the run has nothing to succeed at
+		self.settings.db_set("is_fetch_enabled", 1)
+
 	def tearDown(self):
 		self.settings.delete(force=True, ignore_permissions=True, delete_permanently=True)
 		cleanup_employee()
@@ -158,9 +162,9 @@ class TestProcessTransactionsGating(WatermarkTestCase):
 	@patch(f"{SERVICE}.advance_attendance_watermark")
 	@patch(f"{SERVICE}.get_transactions")
 	def test_successful_run_advances_watermark(self, mock_get_transactions, mock_advance):
-		mock_get_transactions.return_value = iter(
-			[{"emp_code": "_T-NOBODY", "punch_time": "2026-08-17 07:52:00"}]
-		)
+		# a list, not iter(): every enabled source calls this, and a spent
+		# iterator would read as "that source reported nothing"
+		mock_get_transactions.return_value = [{"emp_code": "_T-NOBODY", "punch_time": "2026-08-17 07:52:00"}]
 
 		process_transactions()
 
@@ -170,7 +174,7 @@ class TestProcessTransactionsGating(WatermarkTestCase):
 	@patch(f"{SERVICE}.get_transactions")
 	def test_empty_response_does_not_advance_watermark(self, mock_get_transactions, mock_advance):
 		"""The hosted-BioTime failure: reachable server, offline terminal, no punches."""
-		mock_get_transactions.return_value = iter([])
+		mock_get_transactions.return_value = []
 
 		process_transactions()
 
@@ -190,7 +194,7 @@ class TestProcessTransactionsGating(WatermarkTestCase):
 	@patch(f"{SERVICE}.get_transactions")
 	def test_manual_single_source_sync_does_not_advance_watermark(self, mock_get_transactions, mock_advance):
 		"""One device says nothing about the other locations."""
-		mock_get_transactions.return_value = iter([])
+		mock_get_transactions.return_value = []
 
 		process_transactions(settings_name=self.settings.name)
 
