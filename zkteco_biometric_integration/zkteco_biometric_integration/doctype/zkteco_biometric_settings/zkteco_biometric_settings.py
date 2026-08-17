@@ -41,6 +41,8 @@ class ZKTecoBiometricSettings(Document):
 
 	@frappe.whitelist()
 	def generate_token(self) -> str:
+		frappe.only_for(["System Manager", "HR Manager"])
+
 		from ...api.zkteco_api import get_token
 
 		return get_token(self) if self.is_token_expired else self.token
@@ -74,3 +76,18 @@ class ZKTecoBiometricSettings(Document):
 		)
 
 		return {"queued": True, "total": len(employee_ids)}
+
+	@frappe.whitelist()
+	def fetch_transactions(self) -> bool:
+		frappe.only_for(["System Manager", "HR Manager"])
+		from zkteco_biometric_integration.zkteco_biometric_integration import (
+			SCHEDULED_JOB_METHOD,
+		)
+
+		frappe.enqueue(
+			method=SCHEDULED_JOB_METHOD,
+			enqueue_after_commit=True,
+			settings_name=self.name,
+		)
+
+		return True

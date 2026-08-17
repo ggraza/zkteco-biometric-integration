@@ -149,11 +149,9 @@ app_license = "mit"
 # ---------------
 
 scheduler_events = {
-	"cron": {
-		"0 6,18 * * *": [
-			"zkteco_biometric_integration.zkteco_biometric_integration.services.transactions_sync_service.process_transactions"
-		],
-	}
+	"hourly": [
+		"zkteco_biometric_integration.zkteco_biometric_integration.services.transactions_sync_service.process_transactions"
+	],
 }
 
 # Testing
