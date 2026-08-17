@@ -81,7 +81,9 @@ def advance_attendance_watermark(fetched_upto: datetime) -> None:
 
 		frappe.db.set_value("Shift Type", shift.name, "last_sync_of_checkin", watermark)
 
-	frappe.db.commit()
+	# runs in a scheduled job: the watermark must survive independently of whatever
+	# the caller does next, or a later failure would silently roll it back
+	frappe.db.commit()  # nosemgrep
 
 
 def build_transaction_data(settings: "ZKTecoBiometricSettings") -> tuple:

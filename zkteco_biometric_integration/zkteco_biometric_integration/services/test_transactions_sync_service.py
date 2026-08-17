@@ -57,7 +57,7 @@ def cleanup_shifts() -> None:
 		"Shift Type", filters={"name": ("like", f"{TEST_SHIFT_PREFIX}%")}, pluck="name"
 	):
 		frappe.delete_doc("Shift Type", name, force=True, ignore_permissions=True, delete_permanently=True)
-	frappe.db.commit()
+	frappe.db.commit()  # nosemgrep
 
 
 def watermark_of(shift: str):
@@ -88,7 +88,8 @@ class TestAttendanceWatermark(unittest.TestCase):
 				row.last_sync_of_checkin,
 				update_modified=False,
 			)
-		frappe.db.commit()
+		# restoring real watermarks the committing service overwrote
+		frappe.db.commit()  # nosemgrep
 
 	def test_watermark_lands_one_safety_buffer_behind_the_run(self):
 		shift = create_shift("Managed", last_sync=get_datetime() - timedelta(days=2))
@@ -156,7 +157,8 @@ class TestProcessTransactions(unittest.TestCase):
 	def tearDown(self):
 		frappe.set_user("Administrator")
 		self.settings.delete(force=True, ignore_permissions=True, delete_permanently=True)
-		frappe.db.commit()
+		# fixtures are committed, so removing them must be committed as well
+		frappe.db.commit()  # nosemgrep
 
 	@patch(f"{SERVICE}.advance_attendance_watermark")
 	@patch(
@@ -231,7 +233,8 @@ class TestFetchTransactionsAction(unittest.TestCase):
 	def tearDown(self):
 		frappe.set_user("Administrator")
 		self.settings.delete(force=True, ignore_permissions=True, delete_permanently=True)
-		frappe.db.commit()
+		# fixtures are committed, so removing them must be committed as well
+		frappe.db.commit()  # nosemgrep
 
 	@patch.object(frappe, "enqueue")
 	def test_button_enqueues_a_run_scoped_to_this_settings_doc(self, mock_enqueue):

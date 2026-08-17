@@ -53,7 +53,7 @@ class WatermarkTestCase(unittest.TestCase):
 				update_modified=False,
 			)
 
-		frappe.db.commit()
+		frappe.db.commit()  # nosemgrep
 
 	def make_shift(
 		self,
