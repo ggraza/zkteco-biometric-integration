@@ -21,6 +21,7 @@ class ZKTecoGlobal(Document):
 
 		cron_expression: DF.Data | None
 		fetch_frequency: DF.Literal[
+			"",
 			"All",
 			"Hourly",
 			"Hourly Long",
@@ -38,24 +39,37 @@ class ZKTecoGlobal(Document):
 	# end: auto-generated types
 
 	def validate(self):
+		self.validate_cron_expression()
 		self.update_schedule_job()
 
 	@property
 	def is_cron(self) -> bool:
 		return self.fetch_frequency == "Cron"
 
-	def update_schedule_job(self) -> None:
+	def validate_cron_expression(self) -> None:
 		if self.is_cron and not self.cron_expression:
 			frappe.throw(_("Cron Expression is required when Fetch Frequency is set to Cron"))
 
-		job = frappe.db.exists("Scheduled Job Type", {"method": SCHEDULED_JOB_METHOD})
-		if not job:
+	def update_schedule_job(self) -> None:
+		if not self.fetch_frequency or (self.is_cron and not self.cron_expression):
 			return
 
-		frappe.get_doc("Scheduled Job Type", job).db_set(
-			{
-				"frequency": "Cron" if self.is_cron else self.fetch_frequency,
-				"cron_format": self.cron_expression if self.is_cron else "",
-			},
+		job_name = frappe.db.exists("Scheduled Job Type", {"method": SCHEDULED_JOB_METHOD})
+		if not job_name:
+			return
+
+		frequency = "Cron" if self.is_cron else self.fetch_frequency
+		cron_format = self.cron_expression if self.is_cron else ""
+
+		job = frappe.get_doc("Scheduled Job Type", job_name)
+		if job.frequency == frequency and (job.cron_format or "") == cron_format:
+			return
+
+		job.db_set(
+			{"frequency": frequency, "cron_format": cron_format},
 			update_modified=False,
 		)
+
+
+def update_scheduled_job() -> None:
+	frappe.get_cached_doc("ZKTeco Global").update_schedule_job()
