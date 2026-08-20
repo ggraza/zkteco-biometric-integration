@@ -154,6 +154,11 @@ scheduler_events = {
 	],
 }
 
+
+after_migrate = [
+	"zkteco_biometric_integration.zkteco_biometric_integration.doctype.zkteco_global.zkteco_global.update_scheduled_job"
+]
+
 # Testing
 # -------
 
