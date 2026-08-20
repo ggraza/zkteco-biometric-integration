@@ -154,10 +154,6 @@ scheduler_events = {
 	],
 }
 
-# Migration
-# ---------
-# Must run here, not as a patch: `sync_jobs()` rewrites the job's frequency from
-# `scheduler_events` above, and it runs after both patch phases.
 
 after_migrate = [
 	"zkteco_biometric_integration.zkteco_biometric_integration.doctype.zkteco_global.zkteco_global.update_scheduled_job"
